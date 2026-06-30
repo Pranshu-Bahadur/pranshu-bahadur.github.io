@@ -1,13 +1,11 @@
-const canvas = document.getElementById('bg-canvas');
+const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');
 
 let w = 0;
 let h = 0;
 let dpr = Math.min(window.devicePixelRatio || 1, 2);
-let stars = [];
-let nodes = [];
-let pulses = [];
 let t = 0;
+let streaks = [];
 
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -15,136 +13,253 @@ function resize() {
   h = window.innerHeight;
   canvas.width = Math.floor(w * dpr);
   canvas.height = Math.floor(h * dpr);
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  buildScene();
+  buildStreaks();
 }
 
 function rand(min, max) {
-  return Math.random() * (max - min) + min;
+  return min + Math.random() * (max - min);
 }
 
-function buildScene() {
-  stars = Array.from({ length: Math.min(180, Math.floor((w * h) / 10000)) }, () => ({
-    x: rand(0, w),
-    y: rand(0, h),
-    z: rand(0.2, 1),
-    tw: rand(0, Math.PI * 2),
-  }));
-
-  const cols = Math.max(6, Math.floor(w / 170));
-  const rows = Math.max(5, Math.floor(h / 170));
-  nodes = [];
-
-  for (let iy = 0; iy < rows; iy++) {
-    for (let ix = 0; ix < cols; ix++) {
-      nodes.push({
-        x: ((ix + 0.5) / cols) * w + rand(-32, 32),
-        y: ((iy + 0.5) / rows) * h + rand(-32, 32),
-        r: rand(1.4, 3.2),
-        phase: rand(0, Math.PI * 2),
-      });
-    }
-  }
-
-  pulses = Array.from({ length: 8 }, (_, i) => ({
-    pathIndex: i,
-    progress: rand(0, 1),
-    speed: rand(0.0018, 0.0045),
+function buildStreaks() {
+  streaks = Array.from({ length: Math.max(18, Math.floor(w / 75)) }, () => ({
+    x: rand(-w * 0.15, w * 1.15),
+    y: rand(h * 0.1, h * 0.85),
+    len: rand(80, 240),
+    speed: rand(0.25, 0.8),
+    alpha: rand(0.04, 0.14),
   }));
 }
 
-function findNeighbors(index, maxDist) {
-  const base = nodes[index];
-  const out = [];
-  for (let i = 0; i < nodes.length; i++) {
-    if (i === index) continue;
-    const dx = nodes[i].x - base.x;
-    const dy = nodes[i].y - base.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < maxDist) out.push({ i, dist });
-  }
-  out.sort((a, b) => a.dist - b.dist);
-  return out.slice(0, 3);
+function project(x, y, z) {
+  const depth = 980;
+  const scale = depth / (z + depth);
+  return {
+    x: w / 2 + x * scale,
+    y: h / 2 + y * scale,
+    s: scale,
+  };
 }
 
-function draw() {
-  t += 0.016;
-  ctx.clearRect(0, 0, w, h);
+function quadPoints(rect, y, z, sx = 1, sz = 1) {
+  const hw = rect.w * 0.5 * sx;
+  const hd = rect.d * 0.5 * sz;
+  return [
+    project(-hw + rect.x, y, -hd + z),
+    project(hw + rect.x, y, -hd + z),
+    project(hw + rect.x, y, hd + z),
+    project(-hw + rect.x, y, hd + z),
+  ];
+}
 
-  const grad = ctx.createRadialGradient(w * 0.5, h * 0.42, 20, w * 0.5, h * 0.42, Math.max(w, h) * 0.72);
-  grad.addColorStop(0, 'rgba(10,18,34,0.08)');
-  grad.addColorStop(0.45, 'rgba(7,10,20,0.14)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
+function drawQuad(points, alpha = 0.5, width = 1) {
+  ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.closePath();
+  ctx.stroke();
+}
 
-  for (const s of stars) {
-    const alpha = 0.2 + 0.7 * ((Math.sin(t * 1.6 + s.tw) + 1) * 0.5);
-    ctx.fillStyle = `rgba(255,255,255,${0.18 * s.z + alpha * 0.18})`;
-    ctx.fillRect(s.x, s.y, s.z * 1.8, s.z * 1.8);
-  }
+function drawGrid(rect, y, z, rows, cols, alpha) {
+  const p = quadPoints(rect, y, z);
+  drawQuad(p, alpha, 1.1);
 
-  ctx.lineWidth = 1;
-  for (let i = 0; i < nodes.length; i++) {
-    const ns = findNeighbors(i, Math.min(w, h) * 0.18);
-    for (const n of ns) {
-      const a = nodes[i];
-      const b = nodes[n.i];
-      const distAlpha = Math.max(0, 1 - n.dist / (Math.min(w, h) * 0.18));
-      ctx.strokeStyle = `rgba(101,244,255,${0.045 + distAlpha * 0.08})`;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-    }
-  }
-
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const glow = (Math.sin(t * 1.1 + node.phase) + 1) * 0.5;
-    ctx.fillStyle = `rgba(101,244,255,${0.25 + glow * 0.3})`;
+  for (let i = 1; i < cols; i++) {
+    const u = i / cols;
+    const topX = p[0].x + (p[1].x - p[0].x) * u;
+    const topY = p[0].y + (p[1].y - p[0].y) * u;
+    const botX = p[3].x + (p[2].x - p[3].x) * u;
+    const botY = p[3].y + (p[2].y - p[3].y) * u;
+    ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.36})`;
     ctx.beginPath();
-    ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(topX, topY);
+    ctx.lineTo(botX, botY);
+    ctx.stroke();
   }
 
-  const usable = Math.max(1, nodes.length - 2);
-  pulses.forEach((p, idx) => {
-    p.progress += p.speed;
-    if (p.progress >= 1) p.progress = 0;
-    const aIdx = (p.pathIndex * 7 + idx * 5) % usable;
-    const bIdx = (aIdx + 9) % usable;
-    const a = nodes[aIdx];
-    const b = nodes[bIdx];
-    const x = a.x + (b.x - a.x) * p.progress;
-    const y = a.y + (b.y - a.y) * p.progress;
-    ctx.fillStyle = idx % 2 ? 'rgba(255,79,216,0.85)' : 'rgba(101,244,255,0.9)';
-    ctx.shadowBlur = 16;
-    ctx.shadowColor = idx % 2 ? 'rgba(255,79,216,0.9)' : 'rgba(101,244,255,0.9)';
+  for (let j = 1; j < rows; j++) {
+    const v = j / rows;
+    const leftX = p[0].x + (p[3].x - p[0].x) * v;
+    const leftY = p[0].y + (p[3].y - p[0].y) * v;
+    const rightX = p[1].x + (p[2].x - p[1].x) * v;
+    const rightY = p[1].y + (p[2].y - p[1].y) * v;
+    ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.36})`;
     ctx.beginPath();
-    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.moveTo(leftX, leftY);
+    ctx.lineTo(rightX, rightY);
+    ctx.stroke();
+  }
+}
+
+function drawExtruded(rect, y, z, height, rows, cols, alpha) {
+  const top = quadPoints(rect, y, z);
+  const bottom = quadPoints(rect, y + height, z);
+  drawQuad(top, alpha, 1.05);
+  drawQuad(bottom, alpha * 0.8, 0.95);
+
+  for (let i = 0; i < 4; i++) {
+    ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.5})`;
+    ctx.beginPath();
+    ctx.moveTo(top[i].x, top[i].y);
+    ctx.lineTo(bottom[i].x, bottom[i].y);
+    ctx.stroke();
+  }
+
+  for (let i = 1; i < cols; i++) {
+    const u = i / cols;
+    const a = {
+      x: top[0].x + (top[1].x - top[0].x) * u,
+      y: top[0].y + (top[1].y - top[0].y) * u,
+    };
+    const b = {
+      x: top[3].x + (top[2].x - top[3].x) * u,
+      y: top[3].y + (top[2].y - top[3].y) * u,
+    };
+    ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.22})`;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+
+  for (let j = 1; j < rows; j++) {
+    const v = j / rows;
+    const a = {
+      x: top[0].x + (top[3].x - top[0].x) * v,
+      y: top[0].y + (top[3].y - top[0].y) * v,
+    };
+    const b = {
+      x: top[1].x + (top[2].x - top[1].x) * v,
+      y: top[1].y + (top[2].y - top[1].y) * v,
+    };
+    ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.22})`;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+}
+
+function drawConnector(x, topY, botY, z, alpha) {
+  const a = project(x, topY, z);
+  const b = project(x, botY, z);
+  ctx.setLineDash([2, 4]);
+  ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawSpeedLines() {
+  for (const s of streaks) {
+    s.x += s.speed;
+    if (s.x - s.len > w + 20) s.x = -s.len - rand(0, 120);
+    ctx.strokeStyle = `rgba(255,255,255,${s.alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(s.x + s.len, s.y);
+    ctx.stroke();
+  }
+}
+
+function drawCentralPulse(cy) {
+  const cx = w * 0.5;
+  const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, 160);
+  g.addColorStop(0, 'rgba(255,255,255,0.92)');
+  g.addColorStop(0.22, 'rgba(255,255,255,0.30)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 160, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 3; i++) {
+    const r = 58 + i * 22 + Math.sin(t * 1.2 + i) * 4;
+    ctx.strokeStyle = `rgba(255,255,255,${0.16 - i * 0.03})`;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 1.75, r * 0.4, -0.03, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawLayerStack() {
+  const osc = Math.sin(t * 0.9) * 8;
+
+  const base = { x: 0, w: 980, d: 430 };
+  const mid = { x: 0, w: 860, d: 280 };
+  const top = { x: 0, w: 1040, d: 390 };
+  const inset = { x: 0, w: 610, d: 175 };
+
+  const y0 = 280 + osc * 0.3;
+  const y1 = 82 + osc * 0.55;
+  const y2 = -118 + osc * 0.75;
+  const y3 = -320 + osc;
+
+  drawGrid(base, y0, 120, 14, 18, 0.62);
+  drawGrid(mid, y1, 36, 8, 12, 0.62);
+  drawGrid(top, y3, -42, 16, 18, 0.62);
+  drawGrid(inset, y3 - 6, -22, 3, 6, 0.86);
+
+  const blocks = [];
+  for (let i = -4; i <= 3; i++) {
+    blocks.push({ x: i * 118 - 12, w: 92, d: 106 });
+  }
+  blocks.forEach((b, i) => {
+    drawExtruded(b, y1 + 2, 34, 62, 5, 5, i % 3 === 0 ? 0.66 : 0.5);
   });
 
-  const cx = w * 0.5;
-  const cy = h * 0.48;
-  for (let i = 0; i < 3; i++) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate((t * 0.045) + i * 1.2);
-    ctx.strokeStyle = i === 1 ? 'rgba(255,184,77,0.08)' : 'rgba(143,117,255,0.08)';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 220 + i * 60, 110 + i * 24, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }
+  const rightSmallTop = [
+    { x: 360, w: 42, d: 56 }, { x: 412, w: 42, d: 56 }, { x: 464, w: 42, d: 56 }
+  ];
+  rightSmallTop.forEach(b => drawExtruded(b, y1 + 6, 30, 38, 3, 2, 0.48));
 
-  requestAnimationFrame(draw);
+  const fins = [];
+  for (let i = -24; i <= 24; i++) {
+    if (Math.abs(i) < 2) continue;
+    fins.push({ x: i * 22, w: 12, d: 76 });
+  }
+  fins.forEach((b, idx) => {
+    drawExtruded(b, y2 + 16, 16, 86 + (idx % 5) * 3, 4, 1, 0.34);
+  });
+
+  const rightMid = [];
+  for (let i = 0; i < 4; i++) rightMid.push({ x: 390 + i * 34, w: 22, d: 72 });
+  const leftMid = [];
+  for (let i = 0; i < 4; i++) leftMid.push({ x: -468 + i * 34, w: 22, d: 72 });
+  [...rightMid, ...leftMid].forEach(b => drawExtruded(b, y2 + 20, 14, 66, 4, 1, 0.5));
+
+  [-430, -250, -70, 110, 290, 470].forEach(x => drawConnector(x, y3, y1 + 62, 26, 0.24));
+  [-410, -230, -50, 130, 310, 490].forEach(x => drawConnector(x, y1 + 10, y0, 78, 0.22));
+
+  const glowY = project(0, y2 + 54, 18).y;
+  drawCentralPulse(glowY);
+
+  const sweep = (Math.sin(t * 0.75) * 0.5 + 0.5);
+  const topPts = quadPoints(top, y3, -42);
+  const left = topPts[0].x + (topPts[1].x - topPts[0].x) * sweep;
+  const bottom = topPts[3].x + (topPts[2].x - topPts[3].x) * sweep;
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(left, topPts[0].y + (topPts[3].y - topPts[0].y) * 0.02);
+  ctx.lineTo(bottom, topPts[3].y + (topPts[0].y - topPts[3].y) * -0.02);
+  ctx.stroke();
+}
+
+function animate() {
+  t += 0.016;
+  ctx.clearRect(0, 0, w, h);
+  drawSpeedLines();
+  drawLayerStack();
+  requestAnimationFrame(animate);
 }
 
 window.addEventListener('resize', resize);
 resize();
-requestAnimationFrame(draw);
+animate();
