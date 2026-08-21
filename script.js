@@ -1,5 +1,8 @@
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');
+const formulationPortal = document.getElementById('formulation-portal');
+const formulationFrame = document.getElementById('formulation-frame');
+const formulationFrameShell = document.querySelector('.formulation-frame-shell');
 
 let w = 0;
 let h = 0;
@@ -259,6 +262,35 @@ function animate() {
   drawLayerStack();
   requestAnimationFrame(animate);
 }
+
+function openFormulation(event) {
+  if (event) event.preventDefault();
+  document.body.classList.add('formulation-open');
+  formulationPortal.setAttribute('aria-hidden', 'false');
+}
+
+function closeFormulation() {
+  document.body.classList.remove('formulation-open');
+  formulationPortal.setAttribute('aria-hidden', 'true');
+}
+
+document.querySelectorAll('[data-open-formulation]').forEach((control) => {
+  control.addEventListener('click', openFormulation);
+});
+
+document.querySelectorAll('[data-close-formulation]').forEach((control) => {
+  control.addEventListener('click', closeFormulation);
+});
+
+formulationFrame.addEventListener('load', () => {
+  formulationFrameShell.classList.add('is-loaded');
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && document.body.classList.contains('formulation-open')) {
+    closeFormulation();
+  }
+});
 
 window.addEventListener('resize', resize);
 resize();

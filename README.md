@@ -4,7 +4,9 @@ A monochrome personal site with an animated wireframe systems background.
 
 ## Featured system
 
-**[An Interpretation of CuTe](https://cute-universe.pranshubahadur.chatgpt.site)** is integrated as the featured live project. It is an interactive mathematical atlas connecting:
+**An Interpretation of CuTe** is bundled directly into the calling card under `formulation/` and opens as a full-screen internal experience. It is not merely an external project link. The standalone live deployment remains available at [cute-universe.pranshubahadur.chatgpt.site](https://cute-universe.pranshubahadur.chatgpt.site).
+
+The formulation is an interactive mathematical atlas connecting:
 
 ```text
 profile → hierarchical shape → coordinate states
@@ -18,6 +20,7 @@ The atlas relates Cris Cecka's executable layout semantics, the Colfax categoric
 - `index.html` — identity card and featured CuTe entry
 - `styles.css` — monochrome responsive presentation
 - `script.js` — animated wireframe systems background
+- `formulation/` — complete compiled 15-chapter CuTe formulation app
 - `LICENSE` — BSD 3-Clause License
 
 Open `index.html` in a browser or serve the directory with any static file server.
